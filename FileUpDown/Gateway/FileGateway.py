@@ -9,8 +9,8 @@ from urllib.parse import quote
 
 from flask import Blueprint, request, Response, jsonify
 
-import Gateway
-from Service import FileService
+from FileUpDown import Gateway
+from FileUpDown.Service import FileService
 
 RestRouter = Blueprint('FileGateway', __name__, url_prefix='/file/')
 

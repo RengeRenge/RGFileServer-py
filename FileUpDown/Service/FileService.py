@@ -6,10 +6,10 @@ This module handles file upload and download procedure.
 import os
 import time
 
-import exifread as exifread
+import exifread
 from PIL import Image
 
-import GlobalConfigContext
+from FileUpDown import GlobalConfigContext
 
 
 def perform_upload(data):
@@ -40,7 +40,7 @@ def perform_upload(data):
             upload_path = os.path.join(GlobalConfigContext.FileStore_Directory, ret_file_name)
 
         # stream write
-        with open(upload_path, "w") as f:
+        with open(upload_path, "wb") as f:
             buffer_size = 4096
             while True:
                 stream_buffer = data.stream.read(buffer_size)
@@ -70,7 +70,7 @@ def perform_upload(data):
 
 def exif_date(filename):
     try:
-        fd = open(filename, 'r')
+        fd = open(filename, 'rb')
     except:
         raise "unopen file[%s]\\n" % filename
 
