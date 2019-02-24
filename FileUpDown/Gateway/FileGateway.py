@@ -3,14 +3,12 @@
 """
 This package is a Blueprint of File Up/Down load Restful API router functions.
 """
-# from urllib import quote
-# from quopri import quote
 from urllib.parse import quote
 
 from flask import Blueprint, request, Response, jsonify
 
-from FileUpDown import Gateway
-from FileUpDown.Service import FileService
+import Gateway
+from Service import FileService
 
 RestRouter = Blueprint('FileGateway', __name__, url_prefix='/file/')
 

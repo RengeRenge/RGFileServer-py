@@ -9,7 +9,7 @@ import time
 import exifread
 from PIL import Image
 
-from FileUpDown import GlobalConfigContext
+import GlobalConfigContext
 
 
 def perform_upload(data):
