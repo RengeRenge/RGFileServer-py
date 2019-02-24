@@ -9,7 +9,7 @@ Actually, it launches as a Flask application, for web service request handing.
 from flask import Flask
 from werkzeug.contrib.fixers import ProxyFix
 
-from FileUpDown.Gateway import FileGateway
+from Gateway import FileGateway
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app)
