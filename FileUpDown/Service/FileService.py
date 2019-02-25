@@ -7,9 +7,13 @@ import os
 import time
 
 import exifread
+import pngquant
 from PIL import Image
 
 import GlobalConfigContext
+from Service.gifsicle import GifInfo, Gifsicle
+
+pngquant.config(quant_file='./pngquant', max_quality=50, min_quality=30, ndeep=10, ndigits=1)
 
 
 def perform_upload(data):
@@ -22,6 +26,7 @@ def perform_upload(data):
     :return: tuple of <success flag, actual filename/exception>
     """
     f = None
+    ret_file_name = None
     try:
         from werkzeug.utils import secure_filename
         import uuid
@@ -42,24 +47,40 @@ def perform_upload(data):
         # stream write
         with open(upload_path, "wb") as f:
             buffer_size = 4096
-            while True:
+            while f:
                 stream_buffer = data.stream.read(buffer_size)
                 if len(stream_buffer) == 0:
 
                     f.close()
                     f = None
+                    exif = exif_date(upload_path)
 
                     if data.content_type.startswith('image/'):
                         im = Image.open(upload_path)
+
+                        quality_name = file_pre_name + uuidstr + '_quality' + extension
+                        quality_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, quality_name)
+
+                        if extension.endswith('gif'):
+                            gi = GifInfo(upload_path)
+                            gi.resize_fit_gif(width=256, height=256)
+                            gf = Gifsicle()
+                            if gf.convert(gi, outfile=quality_name_path) != 0:
+                                raise Exception
+                        elif extension.endswith('png'):
+                            pngquant.quant_image(image=upload_path, dst=quality_name_path)
+                        else:
+                            im.save(quality_name_path, quality=50)
+
                         im.thumbnail(size=(600, 600))
+
                         thumb_name = file_pre_name + uuidstr + '_thumbnail' + extension
                         thumb_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, thumb_name)
                         im.save(thumb_name_path)
 
-                    exif = exif_date(upload_path)
                     return True, ret_file_name, "", exif
-
                 f.write(stream_buffer)
+            return False, ret_file_name, str('open failed'), 0,
     except Exception as ex:
         print(ex)
         return False, ret_file_name, str(ex), 0,
