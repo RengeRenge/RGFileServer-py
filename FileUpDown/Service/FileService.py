@@ -9,6 +9,7 @@ import time
 import exifread
 import pngquant
 from PIL import Image
+from flask import json
 
 import GlobalConfigContext
 from Service.gifsicle import GifInfo, Gifsicle
@@ -53,7 +54,7 @@ def perform_upload(data):
 
                     f.close()
                     f = None
-                    exif = exif_date(upload_path)
+                    exif = exif_data(upload_path)
 
                     if data.content_type.startswith('image/'):
                         im = Image.open(upload_path)
@@ -89,33 +90,65 @@ def perform_upload(data):
             f.close()
 
 
-def exif_date(filename):
+def exif_data(filename):
     try:
         fd = open(filename, 'rb')
-    except:
-        raise "unopen file[%s]\\n" % filename
 
-    data = exifread.process_file(fd)
+        exif = {}
+        data = exifread.process_file(fd)
+        if data:
+            try:
+                original = {}
+                for att in data:
+                    if hasattr(data[att], 'printable'):
+                        original[att] = data[att].printable
 
-    if data:
-        try:
-            t = data['EXIF DateTimeOriginal']
+                exif.update(original=original)
 
-            # 转换为时间字符串
-            t = str(t).replace("-", ":")
+                # 拍摄时间
+                if 'EXIF DateTimeOriginal' in data:
+                    t = data['EXIF DateTimeOriginal']
 
-            # 转为时间数组
-            time_array = time.strptime(t, '%Y:%m:%d %H:%M:%S')
+                    # 转换为时间字符串
+                    t = str(t).replace("-", ":")
 
-            # 转化为时间戳
-            timestamp = time.mktime(time_array) * 1000
-            return timestamp
-        except Exception as ex:
-            pass
-    return 0
-    # # 如果没有取得 exif ，则用图像的创建日期，作为拍摄日期
-    # state = os.stat(filename)
-    # return time.strftime("%Y-%m-%d", time.localtime(state[-2]))
+                    # 转为时间数组
+                    time_array = time.strptime(t, '%Y:%m:%d %H:%M:%S')
+
+                    # 转化为时间戳
+                    timestamp = time.mktime(time_array) * 1000
+
+                    exif.update(timestamp=timestamp)
+                # # 如果没有取得 exif ，则用图像的创建日期，作为拍摄日期
+                # state = os.stat(filename)
+                # return time.strftime("%Y-%m-%d", time.localtime(state[-2]))
+
+                # 纬度 和 经度
+                if 'GPS GPSLongitudeRef' in data and 'GPS GPSLongitudeRef' in data:
+                    # 纬度
+                    LatRef = data["GPS GPSLatitudeRef"].printable
+                    Lat = data["GPS GPSLatitude"].printable[1:-1].replace(" ", "").replace("/", ",").split(",")
+                    Lat = float(Lat[0]) + float(Lat[1]) / 60 + float(Lat[2]) / float(Lat[3]) / 3600
+                    if LatRef != "N":
+                        Lat = Lat * (-1)
+
+                    # 经度
+                    LonRef = data["GPS GPSLongitudeRef"].printable
+                    Lon = data["GPS GPSLongitude"].printable[1:-1].replace(" ", "").replace("/", ",").split(",")
+                    Lon = float(Lon[0]) + float(Lon[1]) / 60 + float(Lon[2]) / float(Lon[3]) / 3600
+                    if LonRef != "E":
+                        Lon = Lon * (-1)
+
+                    exif.update(gps_lalo='%f,%f' % (Lat, Lon))
+                return exif
+            except Exception as ex:
+                print(ex)
+                return exif
+            finally:
+                fd.close()
+        return exif
+    except Exception as ex:
+        raise "exif_data open file[%s] failed %s\n" % (filename, str(ex))
 
 
 def perform_download(name):
