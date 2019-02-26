@@ -16,27 +16,27 @@ class GifInfo:  # gifsicle -I
     def resize_gif(self, width=None, height=None):
         if width is None and height is None: return False
         if width is None:
-            self.__resizes = " --resize-height %d " % height
+            self.__resizes = " --colors 256 --resize-height %d " % height
             return True
         if height is None:
-            self.__resizes = " --resize-width %d " % width
+            self.__resizes = " --colors 256 --resize-width %d " % width
             return True
-        self.__resizes = " --resize %dx%d" % (width, height)
+        self.__resizes = " --colors 256 --resize %dx%d" % (width, height)
         return True
 
     def resize_fit_gif(self, width=None, height=None):
         if width is None and height is None: return False
         if width is None:
-            self.__resizes = " --resize-fit-height %d " % (height)
+            self.__resizes = " --colors 256 --resize-fit-height %d " % (height)
             return True
         if height is None:
-            self.__resizes = " --resize-fit-width %d " % (width)
+            self.__resizes = " --colors 256 --resize-fit-width %d " % (width)
             return True
-        self.__resizes = " --resize-fit %dx%d " % (width, height)
+        self.__resizes = " --colors 256 --resize-fit %dx%d " % (width, height)
         return True
 
     def fix_scale(self, Xscale, Yscale=None):
-        self.__resizes = " --scale " + str(Xscale / 100.0)
+        self.__resizes = " --colors 256 --scale " + str(Xscale / 100.0)
         if Yscale is not None:
             self.__resizes += "x" + str(Yscale / 100.0)
         self.__resizes += " "
@@ -54,12 +54,12 @@ class GifInfo:  # gifsicle -I
 
     def crop_gif_bypos(self, lefttop, rightdown):
         if rightdown[0] < lefttop[0] or rightdown[1] < lefttop[1]: return False
-        self.__crops = " --crop " + ','.join(map(str, lefttop)) + "-" + ",".join(map(str, rightdown)) + " "
+        self.__crops = " --colors 256 --crop " + ','.join(map(str, lefttop)) + "-" + ",".join(map(str, rightdown)) + " "
         return True
 
     def crop_gif_bywh(self, lefttop, wh):
         if wh[0] <= 0 or wh[1] <= 0: return False
-        self.__crops = " --crop " + ",".join(map(str, lefttop)) + "+" + "x".join(map(str, wh)) + " "
+        self.__crops = " --colors 256 --crop " + ",".join(map(str, lefttop)) + "+" + "x".join(map(str, wh)) + " "
         return True
 
     def __str__(self):
