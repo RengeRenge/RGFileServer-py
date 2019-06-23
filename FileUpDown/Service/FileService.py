@@ -151,12 +151,13 @@ def exif_data(filename):
         raise "exif_data open file[%s] failed %s\n" % (filename, str(ex))
 
 
-def perform_download(name):
+def perform_download(filename, is_import=False):
     """
     Perform retrieve file location for downloading via its file name.
     :param name: file name string
     :return: tuple of <exist flag, file actual location>
     """
-    find_path = os.path.join(GlobalConfigContext.FileStore_Directory, name)
+    base_path = GlobalConfigContext.FileImport_Directory if is_import else GlobalConfigContext.FileStore_Directory
+    find_path = os.path.join(base_path, filename)
     exist_flag = os.path.exists(find_path)
     return exist_flag, find_path
