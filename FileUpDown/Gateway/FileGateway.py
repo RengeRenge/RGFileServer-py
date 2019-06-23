@@ -74,6 +74,15 @@ def handle_download_file(filename):
     return _actual_handle_download(filename, flag, location)
 
 
+@RestRouter.route('/download/import/<filename>', methods=['GET'])
+def handle_download_import_file(filename):
+    """
+    Router for file download requests.
+    """
+    flag, location = FileService.perform_download(filename=filename, is_import=True)
+    return _actual_handle_download(filename, flag, location)
+
+
 # @RestRouter.route('/download/<filename>/', methods=['GET'])
 # def handle_download_file(filename):
 #     """
