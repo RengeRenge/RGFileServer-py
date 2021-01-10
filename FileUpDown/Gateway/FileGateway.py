@@ -1,13 +1,11 @@
 #!/usr/bin/env python
 # encoding: utf-8
-"""
-This package is a Blueprint of File Up/Down load Restful API router functions.
-"""
 from urllib.parse import quote
 
 from flask import Blueprint, request, Response, jsonify
 
 import Gateway
+import magic
 from Service import FileService
 
 RestRouter = Blueprint('FileGateway', __name__, url_prefix='/file/')
@@ -17,50 +15,48 @@ RestRouter = Blueprint('FileGateway', __name__, url_prefix='/file/')
 def handle_upload_file():
     """
     Router for file upload requests.
+    多上传文件, 返回一个数组，包含上传成功的文件信息，每个元素的 key 为文件流的 key
+    :return: [
+        {
+            'name': name,
+            'path': file_path,
+            'mime': mime,
+            'exif': exif,
+            'size': size,
+            "err_msg": err_msg,
+            'key': key,
+        },
+        ……
+    ]
     """
-    # check required argument exist
-    # required_parameter = ["file"]
-    # missing_list = Gateway.check_required_parameter(required_parameter, request.files)
 
-    """
-    存入文件流
-    """
-    # if len(missing_list) != 0:
-    #     return "Missing required argument list: " + str(missing_list)
-    # handle upload procedure
-    name = []
+    results = []
 
-    upload_with_key('file', name)
-    upload_with_key('icon', name)
-    upload_with_key('background', name)
-
-    return jsonify(name)
-    # res_data = {
-    #     "success": flag,
-    #     "msg": message,  # optional
-    #     "file_path": 'file/' + file_path
-    # }
-    # return jsonify(res_data)
-    # return "Exception occurred when uploading, " + message if flag is False \
-    #     else url_for("FileGateway.handle_download_file", _external=True, filename=message)[0:-1]
+    re_files = request.files
+    for file_key in re_files:
+        __upload_with_key(file_key, results)
+    return jsonify(results)
 
 
-def upload_with_key(key, res_array):
+def __upload_with_key(key, res_array):
     data = request.files[key] if key in request.files else None
     flag = None
+    path, mime, exif, message, size = None, None, None, None, 0
     if data is not None:
-        flag, file_path, message, exif = FileService.perform_upload(data)
-    if flag:
-        res_array.append(wrapper_res(data.filename, file_path, data.mimetype, exif, message, key))
+        flag, message, path, mime, exif, size, md5 = FileService.perform_upload(data)
+    res_array.append(__wrapper_res(data.filename, path, mime, exif, size, md5, message, flag, key))
 
 
-def wrapper_res(name, file_path, type, exif, err_msg, key):
+def __wrapper_res(name, file_path, mime, exif, size, md5, err_msg, flag, key):
     return {
         'name': name,
         'path': file_path,
-        'type': type,
+        'mime': mime,
         'exif': exif,
+        'size': size,
+        'hash': md5,
         "err_msg": err_msg,
+        'flag': flag,
         'key': key,
     }
 
@@ -71,7 +67,7 @@ def handle_download_file(filename):
     Router for file download requests.
     """
     flag, location = FileService.perform_download(filename)
-    return _actual_handle_download(filename, flag, location)
+    return __actual_handle_download(filename, flag, location)
 
 
 @RestRouter.route('/download/import/<filename>', methods=['GET'])
@@ -80,16 +76,7 @@ def handle_download_import_file(filename):
     Router for file download requests.
     """
     flag, location = FileService.perform_download(filename=filename, is_import=True)
-    return _actual_handle_download(filename, flag, location)
-
-
-# @RestRouter.route('/download/<filename>/', methods=['GET'])
-# def handle_download_file(filename):
-#     """
-#     Router for file download requests.
-#     """
-#     flag, location = FileService.perform_download(filename)
-#     return _actual_handle_download(filename, flag, location)
+    return __actual_handle_download(filename, flag, location)
 
 
 @RestRouter.route('/download/', methods=['POST'])
@@ -105,10 +92,10 @@ def handle_download_file_post():
     filename = request.values["filename"]
     # handle download procedure
     flag, location = FileService.perform_download(filename)
-    return _actual_handle_download(filename, flag, location)
+    return __actual_handle_download(filename, flag, location)
 
 
-def _actual_handle_download(filename, flag, location):
+def __actual_handle_download(filename, flag, location):
     """
     Retrieve file from steady by controller and generate streaming response package.
     """
@@ -123,8 +110,37 @@ def _actual_handle_download(filename, flag, location):
                         break
                     yield buf
 
-        response_package = Response(send_streaming(), content_type='application/octet-stream')
+        mime_type = magic.from_file(location, mime=True)
+        response_package = Response(send_streaming(), content_type=mime_type)
         url = quote(filename.encode('utf8'))
         dis = "inline; filename*=utf-8''{}".format(url)
         response_package.headers['Content-Disposition'] = dis
         return response_package
+
+
+@RestRouter.route('/del', methods=['POST'])
+def file_del():
+    args = request.json
+    names = args.get('names')
+
+    results = []
+    for name in names:
+        result = FileService.perform_del(name)
+        results.append({
+            'name': name,
+            'result': result
+        })
+    return jsonify(results)
+
+
+@RestRouter.route('/info', methods=['GET'])
+def file_info():
+    args = request.json
+    names = args.get('names')
+
+    results = []
+    for name in names:
+        flag, message, path, mime, exif, size, md5 = FileService.perform_info(name)
+        info = __wrapper_res(name, path, mime, exif, size, md5, message, flag, 'file')
+        results.append(info)
+    return jsonify(results)
