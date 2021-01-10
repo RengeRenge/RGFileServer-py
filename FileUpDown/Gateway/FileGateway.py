@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # encoding: utf-8
+import os
 from urllib.parse import quote
 
 from flask import Blueprint, request, Response, jsonify
@@ -115,6 +116,7 @@ def __actual_handle_download(filename, flag, location):
         url = quote(filename.encode('utf8'))
         dis = "inline; filename*=utf-8''{}".format(url)
         response_package.headers['Content-Disposition'] = dis
+        response_package.headers['content-length'] = os.path.getsize(location)
         return response_package
 
 
