@@ -63,6 +63,8 @@ def __sure_mime(mime_parse, mime_guess):
     """
     if mime_guess is None:
         return mime_parse
+    if mime_parse == 'application/octet-stream' or mime_parse is None:
+        return mime_guess
     parse_type = mime_parse.split(sep='/')
     guess_type = mime_guess.split(sep='/')
     if parse_type[0] == guess_type[0]:
