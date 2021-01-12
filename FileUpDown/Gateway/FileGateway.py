@@ -1,13 +1,10 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import os
-from urllib.parse import quote
 
-from flask import Blueprint, request, Response, jsonify
+from flask import Blueprint, request, jsonify
 
 import Gateway
-import magic
-from Service import FileService
+from Service import FileService, RangeResponse
 
 RestRouter = Blueprint('FileGateway', __name__, url_prefix='/file/')
 
@@ -42,7 +39,7 @@ def handle_upload_file():
 def __upload_with_key(key, res_array):
     data = request.files[key] if key in request.files else None
     flag = None
-    path, mime, exif, message, size = None, None, None, None, 0
+    path, mime, exif, message, size, md5 = None, None, None, None, 0, ""
     if data is not None:
         flag, message, path, mime, exif, size, md5 = FileService.perform_upload(data)
     res_array.append(__wrapper_res(data.filename, path, mime, exif, size, md5, message, flag, key))
@@ -76,7 +73,7 @@ def handle_download_import_file(filename):
     """
     Router for file download requests.
     """
-    flag, location = FileService.perform_download(filename=filename, is_import=True)
+    flag, location = FileService.perform_download(filename=filename, at_import=True)
     return __actual_handle_download(filename, flag, location)
 
 
@@ -103,21 +100,7 @@ def __actual_handle_download(filename, flag, location):
     if flag is False:
         return "File not exist: " + filename
     else:
-        def send_streaming():
-            with open(location, 'rb') as f:
-                while True:
-                    buf = f.read(10 * 1024 * 1024)
-                    if not buf:
-                        break
-                    yield buf
-
-        mime_type = magic.from_file(location, mime=True)
-        response_package = Response(send_streaming(), content_type=mime_type)
-        url = quote(filename.encode('utf8'))
-        dis = "inline; filename*=utf-8''{}".format(url)
-        response_package.headers['content-disposition'] = dis
-        response_package.headers['content-length'] = os.path.getsize(location)
-        return response_package
+        return RangeResponse.partial_response(request=request, path=location, filename=filename)
 
 
 @RestRouter.route('/del', methods=['POST'])
