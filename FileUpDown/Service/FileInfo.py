@@ -216,5 +216,11 @@ def audio_cover(path):
     audio = File(path)
     if audio is None:
         return None
+    if hasattr(audio, 'pictures'):
+        pictures = audio.pictures
+        if pictures is not None and len(pictures) > 0:
+            data = pictures[0].data
+            if data is not None:
+                return data
     tags = audio.tags
     return tags['APIC:'].data if 'APIC:' in tags else None
