@@ -78,11 +78,11 @@ def extension(filename, mime, mime_guess):
     mime_guess1 = mime_guess.split(sep='/')[-1]
     ext = None
     if mime1.find(mime_guess1) >= 0 or mime_guess1.find(mime1) >= 0:
-        ext = __guess_extension(mime=mime, forward=mime1)
+        ext = __guess_extension(mime=mime, forward=mime1, filename=filename)
         if ext is None:
-            ext = __guess_extension(mime=mime_guess, forward=mime_guess1)
+            ext = __guess_extension(mime=mime_guess, forward=mime_guess1, filename=filename)
     else:
-        ext = __guess_extension(mime=mime, forward=mime1)
+        ext = __guess_extension(mime=mime, forward=mime1, filename=filename)
     if ext is None:
         ext = os.path.splitext(filename)[-1]
     if ext is None:
@@ -91,14 +91,20 @@ def extension(filename, mime, mime_guess):
     return ext
 
 
-def __guess_extension(mime, forward):
+def __guess_extension(mime, forward, filename):
     forward_ext = '.' + forward
     extensions = mimetypes.guess_all_extensions(type=mime)
-    length, guess_extension = 0, None
-    guess_extensions = difflib.get_close_matches(word=forward, possibilities=extensions, n=1)
+
+    o_ext = os.path.splitext(filename)[-1]
+    guess_extensions = difflib.get_close_matches(word=o_ext, possibilities=extensions, n=1)
     if len(guess_extensions) > 0:
         return guess_extensions[0]
 
+    guess_extension = None
+    guess_extensions = difflib.get_close_matches(word=forward, possibilities=extensions, n=1)
+    if len(guess_extensions) > 0:
+        return guess_extensions[0]
+    length = 0
     for ext in extensions:
         if forward == ext or forward == forward_ext:
             return ext
