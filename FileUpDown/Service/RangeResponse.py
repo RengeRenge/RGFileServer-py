@@ -1,7 +1,12 @@
 # encoding: utf-8
 import os
 from urllib.parse import quote
+
+import cv2
+from PIL import Image
 from flask import Response, abort
+from six import BytesIO
+
 from Service import FileInfo
 
 
@@ -10,8 +15,8 @@ def partial_response(request, path, filename):
     if request.is_json:
         params = request.json
         mime_guess = params.get('mime', None)
-    if 'audioCover' in params and int(params['audioCover']) > 0:
-        return audio_cover_response(path=path)
+    if 'cover' in params and int(params['cover']) > 0:
+        return cover_response(path=path)
     if 'Range' in request.headers:
         return range_stream_response(request=request, path=path, mime_guess=mime_guess)
     else:
@@ -97,9 +102,44 @@ def full_stream_response(path, mime_guess):
     return response
 
 
-def audio_cover_response(path):
-    if FileInfo.audio_type(mime=FileInfo.mime_type(path=path)):
-        data = FileInfo.audio_cover(path=path)
-        if data is not None:
-            return Response(data, content_type='image/png')
+def cover_response(path):
+    mime = FileInfo.mime_type(path=path)
+    if FileInfo.audio_type(mime=mime):
+        return audio_cover_response(path=path)
+    if FileInfo.video_type(mime=mime):
+        return video_cover_response(path=path)
     abort(404)
+
+
+def audio_cover_response(path):
+    data = FileInfo.audio_cover(path=path)
+    if data is not None:
+        return Response(data, content_type='image/png')
+    abort(404)
+
+
+def video_cover_response(path):
+    cap = cv2.VideoCapture(path)
+    try:
+        sum_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        dur = sum_frames / fps
+
+        frame_number = min(15 if dur < 300 else 600, dur / 2) * fps
+        cap.set(1, frame_number - 1)
+        res, frame = cap.read()
+
+        if frame is not None and frame.data is not None:
+            frame_im = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            pil_im = Image.fromarray(frame_im)
+            stream = BytesIO()
+            pil_im.save(stream, format="JPEG", quality=70)
+            stream.seek(0)
+            img_for_post = stream.read()
+            return Response(img_for_post, content_type='image/jpeg')
+    except Exception as ex:
+        print(ex)
+        abort(404)
+    finally:
+        if cap is not None:
+            cap.release()

@@ -212,6 +212,12 @@ def audio_type(mime):
     return False
 
 
+def video_type(mime):
+    if mime.startswith('video/'):
+        return True
+    return False
+
+
 def audio_cover(path):
     audio = File(path)
     if audio is None:
