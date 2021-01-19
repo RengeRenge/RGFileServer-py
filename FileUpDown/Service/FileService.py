@@ -17,6 +17,7 @@ import hashlib
 
 RGThumbnailName = '_thumbnail'
 RGQualityName = '_quality'
+RGVideoThumbName = '_videoThumbnail.jpeg'
 
 # quant_file = GlobalConfigContext.Base_Directory + '/pngquant'
 # pngquant.config(quant_file=quant_file, max_quality=80, min_quality=65)
@@ -159,7 +160,10 @@ def perform_del(name):
     thumb_name = file_pre_name + RGThumbnailName + extension
     thumb_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, thumb_name)
 
-    paths = [path, quality_name_path, thumb_name_path]
+    video_thumb_name = file_pre_name + RGVideoThumbName
+    video_thumb_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, video_thumb_name)
+
+    paths = [path, quality_name_path, thumb_name_path, video_thumb_name_path]
 
     result = True
     for path in paths:
