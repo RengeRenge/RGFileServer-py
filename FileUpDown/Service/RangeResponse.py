@@ -5,9 +5,8 @@ from urllib.parse import quote
 import cv2
 from PIL import Image
 from flask import Response, abort
-from six import BytesIO
-
 from Service import FileInfo
+from Service.FileService import RGVideoThumbName
 
 
 def partial_response(request, path, filename):
@@ -119,6 +118,11 @@ def audio_cover_response(path):
 
 
 def video_cover_response(path):
+    file_pre_name = os.path.splitext(path)[0]
+    thumbnail_path = '%s%s' % (file_pre_name, RGVideoThumbName)
+    if os.path.exists(thumbnail_path):
+        return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
+
     cap = cv2.VideoCapture(path)
     try:
         sum_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -131,12 +135,10 @@ def video_cover_response(path):
 
         if frame is not None and frame.data is not None:
             frame_im = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            pil_im = Image.fromarray(frame_im)
-            stream = BytesIO()
-            pil_im.save(stream, format="JPEG", quality=70)
-            stream.seek(0)
-            img_for_post = stream.read()
-            return Response(img_for_post, content_type='image/jpeg')
+            im = Image.fromarray(frame_im)
+            im.thumbnail((1920, 1920), Image.ANTIALIAS)
+            im.save(thumbnail_path, quality=70)
+            return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
     except Exception as ex:
         print(ex)
         abort(404)
