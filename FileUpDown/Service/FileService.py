@@ -159,7 +159,7 @@ def perform_del(name):
 
     paths = [path]
     for name in RGExtName:
-        if name.rfind('.') >= 0:
+        if name.rfind('.') < 0:
             full_name = file_pre_name + name + extension
         else:
             full_name = file_pre_name + name
