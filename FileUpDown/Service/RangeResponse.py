@@ -161,7 +161,7 @@ def epub_cover_response(path):
             im = Image.open(data)
             im.thumbnail((600, 600), Image.ANTIALIAS)
             im.save(thumbnail_path, quality=70)
-            return Response(data, content_type='image/jpeg')
+            return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
         abort(404)
     except Exception as ex:
         print(ex)
