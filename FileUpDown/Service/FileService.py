@@ -18,6 +18,9 @@ import hashlib
 RGThumbnailName = '_thumbnail'
 RGQualityName = '_quality'
 RGVideoThumbName = '_videoThumbnail.jpeg'
+RGEpubThumbName = '_epubThumbnail.jpeg'
+
+RGExtName = [RGThumbnailName, RGQualityName, RGVideoThumbName, RGEpubThumbName]
 
 # quant_file = GlobalConfigContext.Base_Directory + '/pngquant'
 # pngquant.config(quant_file=quant_file, max_quality=80, min_quality=65)
@@ -154,16 +157,14 @@ def perform_del(name):
 
     path = os.path.join(GlobalConfigContext.FileStore_Directory, name)
 
-    quality_name = file_pre_name + RGQualityName + extension
-    quality_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, quality_name)
-
-    thumb_name = file_pre_name + RGThumbnailName + extension
-    thumb_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, thumb_name)
-
-    video_thumb_name = file_pre_name + RGVideoThumbName
-    video_thumb_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, video_thumb_name)
-
-    paths = [path, quality_name_path, thumb_name_path, video_thumb_name_path]
+    paths = [path]
+    for name in RGExtName:
+        if name.rfind('.') >= 0:
+            full_name = file_pre_name + name + extension
+        else:
+            full_name = file_pre_name + name
+        p = os.path.join(GlobalConfigContext.FileStore_Directory, full_name)
+        paths.append(p)
 
     result = True
     for path in paths:

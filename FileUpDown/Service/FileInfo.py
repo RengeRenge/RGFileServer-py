@@ -3,6 +3,7 @@ import difflib
 import mimetypes
 import time
 import os
+import epub
 
 import magic
 import exifread
@@ -218,6 +219,12 @@ def video_type(mime):
     return False
 
 
+def epub_type(mime):
+    if mime == 'application/epub+zip':
+        return True
+    return False
+
+
 def audio_cover(path):
     audio = File(path)
     if audio is None:
@@ -230,3 +237,7 @@ def audio_cover(path):
                 return data
     tags = audio.tags
     return tags['APIC:'].data if 'APIC:' in tags else None
+
+
+def epub_cover(path):
+    return epub.get_epub_cover(path)

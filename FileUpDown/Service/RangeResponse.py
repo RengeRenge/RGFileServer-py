@@ -6,7 +6,7 @@ import cv2
 from PIL import Image
 from flask import Response, abort
 from Service import FileInfo
-from Service.FileService import RGVideoThumbName
+from Service.FileService import RGVideoThumbName, RGEpubThumbName
 
 
 def partial_response(request, path, filename):
@@ -107,6 +107,8 @@ def cover_response(path):
         return audio_cover_response(path=path)
     if FileInfo.video_type(mime=mime):
         return video_cover_response(path=path)
+    if FileInfo.epub_type(mime=mime):
+        return epub_cover_response(path=path)
     abort(404)
 
 
@@ -139,9 +141,29 @@ def video_cover_response(path):
             im.thumbnail((1920, 1920), Image.ANTIALIAS)
             im.save(thumbnail_path, quality=70)
             return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
+        abort(404)
     except Exception as ex:
         print(ex)
         abort(404)
     finally:
         if cap is not None:
             cap.release()
+
+
+def epub_cover_response(path):
+    file_pre_name = os.path.splitext(path)[0]
+    thumbnail_path = '%s%s' % (file_pre_name, RGEpubThumbName)
+    if os.path.exists(thumbnail_path):
+        return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
+    try:
+        data = FileInfo.epub_cover(path=path)
+        if data is not None:
+            im = Image.open(data)
+            im.thumbnail((600, 600), Image.ANTIALIAS)
+            im.save(thumbnail_path, quality=70)
+            return Response(data, content_type='image/jpeg')
+        abort(404)
+    except Exception as ex:
+        print(ex)
+        abort(404)
+        
