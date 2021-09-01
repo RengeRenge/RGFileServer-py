@@ -159,7 +159,7 @@ def epub_cover_response(path):
         data = FileInfo.epub_cover(path=path)
         if data is not None:
             im = Image.open(data)
-            im.thumbnail((600, 600), Image.ANTIALIAS)
+            im.thumbnail((1920, 1920), Image.ANTIALIAS)
             im.save(thumbnail_path, quality=70)
             return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
         abort(404)
