@@ -114,12 +114,12 @@ def full_stream_response(path, mime_guess):
 def full_stream_inzip_response(path, sub_path, mime_guess):
     try:
         with zipfile.ZipFile(path) as z:
+            sub_path = sub_path.encode('gbk').decode('cp437')
             fd = z.open(sub_path)
             size = z.getinfo(sub_path).file_size
             mimetype = FileInfo.mime_type(buffer=fd, mime_guess=mime_guess)
             return full_fd_response(fd=fd, mimetype=mimetype, size=size)
     except Exception as ex:
-        print (ex)
         abort(404)
 
 
@@ -128,18 +128,21 @@ def full_fd_response(mimetype, size, fd=None, path=None):
         if path is not None:
             with open(path, 'rb') as f:
                 while True:
-                    buf = f.read(10 * 1024 * 1024)
+                    buf = f.read(1 * 1024 * 1024)
                     if not buf:
                         break
                     yield buf
 
         elif fd is not None:
             while True:
-                buf = fd.read(10 * 1024 * 1024)
+                buf = fd.read(1 * 1024 * 1024)
                 if not buf:
                     break
                 yield buf
-
+    
+    if mimetype is not None:
+        if mimetype.startswith('text') or mimetype.endswith('json') or mimetype.endswith('rtf'):
+            mimetype+=';charset=UTF-8'
     response = Response(send_streaming(), content_type=mimetype)
     response.headers['Content-Length'] = size
     return response
