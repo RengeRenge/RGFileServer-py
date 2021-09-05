@@ -59,13 +59,13 @@ def __wrapper_res(name, file_path, mime, exif, size, md5, err_msg, flag, key):
     }
 
 
-@RestRouter.route('/download/<filename>', methods=['GET'])
+@RestRouter.route('/download/<path:filename>', methods=['GET'])
 def handle_download_file(filename):
     """
     Router for file download requests.
     """
-    flag, location = FileService.perform_download(filename)
-    return __actual_handle_download(filename, flag, location)
+    flag, location, sub_path = FileService.perform_download(filename)
+    return __actual_handle_download(filename, flag, location, sub_path)
 
 
 @RestRouter.route('/download/import/<filename>', methods=['GET'])
@@ -73,8 +73,8 @@ def handle_download_import_file(filename):
     """
     Router for file download requests.
     """
-    flag, location = FileService.perform_download(filename=filename, at_import=True)
-    return __actual_handle_download(filename, flag, location)
+    flag, location, sub_path = FileService.perform_download(filename=filename, at_import=True)
+    return __actual_handle_download(filename, flag, location, sub_path)
 
 
 @RestRouter.route('/download/', methods=['POST'])
@@ -89,18 +89,18 @@ def handle_download_file_post():
         return "Missing required argument list: " + str(missing_list)
     filename = request.values["filename"]
     # handle download procedure
-    flag, location = FileService.perform_download(filename)
-    return __actual_handle_download(filename, flag, location)
+    flag, location, sub_path = FileService.perform_download(filename)
+    return __actual_handle_download(filename, flag, location, sub_path)
 
 
-def __actual_handle_download(filename, flag, location):
+def __actual_handle_download(filename, flag, location, sub_path):
     """
     Retrieve file from steady by controller and generate streaming response package.
     """
     if flag is False:
         return "File not exist: " + filename
     else:
-        return RangeResponse.partial_response(request=request, path=location, filename=filename)
+        return RangeResponse.partial_response(request=request, path=location, sub_path=sub_path, filename=filename)
 
 
 @RestRouter.route('/del', methods=['POST'])
