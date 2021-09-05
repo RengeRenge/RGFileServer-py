@@ -7,9 +7,9 @@ from PIL import Image
 from flask import Response, abort
 from Service import FileInfo
 from Service.FileService import RGVideoThumbName, RGEpubThumbName
+import zipfile
 
-
-def partial_response(request, path, filename):
+def partial_response(request, path, sub_path, filename):
     params, mime_guess = {}, None
     if request.is_json:
         params = request.json
@@ -17,10 +17,12 @@ def partial_response(request, path, filename):
     if 'cover' in params and int(params['cover']) > 0:
         return cover_response(path=path)
     if 'Range' in request.headers:
-        return range_stream_response(request=request, path=path, mime_guess=mime_guess)
+        return range_stream_response(request=request, path=path, sub_path=sub_path, mime_guess=mime_guess)
     else:
-        response = full_stream_response(path=path, mime_guess=mime_guess)
-        response.headers['Content-Length'] = os.path.getsize(path)
+        if sub_path is None or len(sub_path) > 0:
+            response = full_stream_inzip_response(path=path, sub_path=sub_path, mime_guess=mime_guess)
+        else:
+            response = full_stream_response(path=path, mime_guess=mime_guess)
 
     name = params.get('name', filename)
     name = filename if name is None else name
@@ -67,37 +69,79 @@ def get_range(range, file_size):
     return start, length
 
 
-def range_stream_response(request, path, mime_guess):
+def range_stream_response(request, path, sub_path, mime_guess):
     file_size = os.path.getsize(path)
     buffer_ranges = get_ranges(request, file_size)
 
     buffer_range = buffer_ranges[0]
     start = buffer_range['start']
     length = buffer_range['length']
-    with open(path, 'rb') as fd:
-        fd.seek(start)
-        read_bytes = fd.read(length)
-        response = Response(
-            read_bytes,
-            206,  # Partial Content
-            mimetype=FileInfo.mime_type(path=path, mime_guess=mime_guess),  # Content-Type must be correct
-            direct_passthrough=True,  # Identity encoding
+
+    if sub_path is None or len(sub_path) <= 0:
+        file_size = os.path.getsize(path)
+        mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
+        with open(path, 'rb') as fd:
+            return range_fd_response(fd=fd, mimetype=mimetype, size=file_size, start=start, length=length)
+    
+    try:
+        with zipfile.ZipFile(path) as z:
+            fd = z.open(sub_path)
+            size = z.getinfo(sub_path).file_size
+            mimetype = FileInfo.mime_type(buffer=fd, mime_guess=mime_guess)
+            return range_fd_response(fd=fd, mimetype=mimetype, size=size, start=start, length=length)
+    except:
+        abort(404)
+
+
+def range_fd_response(fd, mimetype, size, start, length):
+    fd.seek(start)
+    read_bytes = fd.read(length)
+    response = Response(
+        read_bytes,
+        206,  # Partial Content
+        mimetype=mimetype,
+        direct_passthrough=True,  # Identity encoding
         )
-        response.headers['Content-Range'] = 'bytes {0}-{1}/{2}'.format(start, start + length - 1, file_size)
-        return response
+    response.headers['Content-Range'] = 'bytes {0}-{1}/{2}'.format(start, start + length - 1, size)
+    return response
 
 
 def full_stream_response(path, mime_guess):
+    mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
+    return full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
+
+
+def full_stream_inzip_response(path, sub_path, mime_guess):
+    try:
+        with zipfile.ZipFile(path) as z:
+            fd = z.open(sub_path)
+            size = z.getinfo(sub_path).file_size
+            mimetype = FileInfo.mime_type(buffer=fd, mime_guess=mime_guess)
+            return full_fd_response(fd=fd, mimetype=mimetype, size=size)
+    except Exception as ex:
+        print (ex)
+        abort(404)
+
+
+def full_fd_response(mimetype, size, fd=None, path=None):
     def send_streaming():
-        with open(path, 'rb') as f:
+        if path is not None:
+            with open(path, 'rb') as f:
+                while True:
+                    buf = f.read(10 * 1024 * 1024)
+                    if not buf:
+                        break
+                    yield buf
+
+        elif fd is not None:
             while True:
-                buf = f.read(10 * 1024 * 1024)
+                buf = fd.read(10 * 1024 * 1024)
                 if not buf:
                     break
                 yield buf
 
-    mime_type = FileInfo.mime_type(path=path, mime_guess=mime_guess)
-    response = Response(send_streaming(), content_type=mime_type)
+    response = Response(send_streaming(), content_type=mimetype)
+    response.headers['Content-Length'] = size
     return response
 
 

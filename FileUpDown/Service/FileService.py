@@ -146,9 +146,15 @@ def perform_download(filename, at_import=False):
     :return: tuple of <exist flag, file actual location>
     """
     base_path = GlobalConfigContext.FileImport_Directory if at_import else GlobalConfigContext.FileStore_Directory
+    paths = filename.split('/')
+    filename = paths[0]
     find_path = os.path.join(base_path, filename)
     exist_flag = os.path.exists(find_path)
-    return exist_flag, find_path
+
+    paths.pop(0)
+    sub_path = '/'.join(paths)
+    
+    return exist_flag, find_path, sub_path
 
 
 def perform_del(name):
