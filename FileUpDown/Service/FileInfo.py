@@ -236,7 +236,15 @@ def audio_cover(path):
             if data is not None:
                 return data
     tags = audio.tags
-    return tags['APIC:'].data if 'APIC:' in tags else None
+    if tags is None:
+        return None
+    if 'APIC:' in tags:
+        # 这通常是mp3文件
+        return tags['APIC:'].data
+    if 'covr' in tags:
+        # 这通常是m4a文件
+        return tags['covr'][0]
+    return None
 
 
 def epub_cover(path):
