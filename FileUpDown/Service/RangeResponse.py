@@ -173,14 +173,14 @@ def full_fd_response(mimetype, size, fd=None, path=None):
         if path is not None:
             with open(path, 'rb') as f:
                 while True:
-                    buf = f.read(1 * 1024 * 1024)
+                    buf = f.read(10 * 1024 * 1024)
                     if not buf:
                         break
                     yield buf
 
         elif fd is not None:
             while True:
-                buf = fd.read(1 * 1024 * 1024)
+                buf = fd.read(10 * 1024 * 1024)
                 if not buf:
                     break
                 yield buf
@@ -260,6 +260,8 @@ def __createVideoCapture(path, destination):
 def __createAudioThumbnail(path, destination):
     try:
         data = FileInfo.audio_cover(path=path)
+        if data is None:
+            return False
         with Image.open(BytesIO(data)) as im:
             im.thumbnail((1920, 1920), Image.ANTIALIAS)
             im = im.convert('RGB')
