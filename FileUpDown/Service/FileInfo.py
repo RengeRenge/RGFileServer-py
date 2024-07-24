@@ -47,7 +47,7 @@ image_support = [
 def mime_type(buffer=None, path=None, mime_guess=None):
     mime_parse = None
     if buffer is not None:
-        mime_parse = magic.from_buffer(buffer.read(2048), mime=True)
+        mime_parse = magic.from_buffer(buffer.read(4096), mime=True)
         buffer.seek(0)
     elif path is not None:
         mime_parse = magic.from_file(filename=path, mime=True)
@@ -76,9 +76,10 @@ def __sure_mime(mime_parse, mime_guess):
 
 def extension(filename, mime, mime_guess):
     mime1 = mime.split(sep='/')[-1]
-    mime_guess1 = mime_guess.split(sep='/')[-1]
+    if mime_guess is not None:
+        mime_guess1 = mime_guess.split(sep='/')[-1]
     ext = None
-    if mime1.find(mime_guess1) >= 0 or mime_guess1.find(mime1) >= 0:
+    if mime_guess is not None and (mime1.find(mime_guess1) >= 0 or mime_guess1.find(mime1) >= 0):
         ext = __guess_extension(mime=mime, forward=mime1, filename=filename)
         if ext is None:
             ext = __guess_extension(mime=mime_guess, forward=mime_guess1, filename=filename)
@@ -207,20 +208,20 @@ def exif_data(filename):
         raise "exif_data open file[%s] failed %s\n" % (filename, str(ex))
 
 
-def audio_type(mime):
-    if mime == 'application/octet-stream' or mime.startswith('audio/'):
+def audio_type(mime, mime_guess):
+    if mime_guess.startswith('audio/') or mime == 'application/octet-stream' or mime.startswith('audio/'):
         return True
     return False
 
 
-def video_type(mime):
-    if mime.startswith('video/'):
+def video_type(mime, mime_guess):
+    if mime_guess.startswith('video/') or mime.startswith('video/'):
         return True
     return False
 
 
-def epub_type(mime):
-    if mime == 'application/epub+zip':
+def epub_type(mime, mime_guess):
+    if mime_guess.rfind('epub') != -1 or mime == 'application/epub+zip':
         return True
     return False
 

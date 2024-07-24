@@ -4,6 +4,7 @@
 This module handles file upload and download procedure.
 """
 import os
+import shutil
 
 import magic
 import uuid
@@ -17,10 +18,8 @@ import hashlib
 
 RGThumbnailName = '_thumbnail'
 RGQualityName = '_quality'
-RGVideoThumbName = '_videoThumbnail.jpeg'
-RGEpubThumbName = '_epubThumbnail.jpeg'
-
-RGExtName = [RGThumbnailName, RGQualityName, RGVideoThumbName, RGEpubThumbName]
+RGCompressCacheThumbName = '_compressCacheThumbnail'
+RGCompressCacheGifName = '_compressCacheThumbnail.gif'
 
 # quant_file = GlobalConfigContext.Base_Directory + '/pngquant'
 # pngquant.config(quant_file=quant_file, max_quality=80, min_quality=65)
@@ -60,10 +59,6 @@ def perform_upload(data):
 
         exif = FileInfo.exif_data(upload_path)
         file_size = os.path.getsize(upload_path)
-
-        if FileInfo.support_image_compress(mime=mime, extension=extension):
-            __handle_image(path=upload_path, mime=mime, exif=exif, name=name, extension=extension)
-
         return True, "", filename, mime, exif, file_size, __md5(upload_path)
     except Exception as ex:
         print(ex)
@@ -105,39 +100,6 @@ def __rotate_image_if_need(image, exif):
     return image, rotated
 
 
-def __handle_image(path, mime, exif, name, extension):
-    im = Image.open(path)
-    rotated = False
-
-    quality_name = name + RGQualityName + extension
-    quality_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, quality_name)
-
-    thumb_name = name + RGThumbnailName + extension
-    thumb_name_path = os.path.join(GlobalConfigContext.FileStore_Directory, thumb_name)
-
-    if mime.endswith('gif'):
-        gi = GifInfo(path)
-        gi.resize_fit_gif(width=256, height=256)
-        gf = Gifsicle()
-        if gf.convert(gi, outfile=quality_name_path) != 0:
-            raise Exception
-    else:
-        im.thumbnail((1920, 1920), Image.ANTIALIAS)
-        im, rotated = __rotate_image_if_need(image=im, exif=exif)
-        im.save(quality_name_path, quality=80)
-
-        # if extension.endswith('png'):
-        #     im.save(quality_name_path)
-        #     pngquant.quant_image(image=thumb_name_path, dst=quality_name_path)
-        # else:
-        #     im.save(quality_name_path)
-
-    im.thumbnail((320, 320), Image.ANTIALIAS)
-    if not rotated:
-        im, rotated = __rotate_image_if_need(image=im, exif=exif)
-    im.save(thumb_name_path)
-
-
 def perform_download(filename, at_import=False):
     """
     Perform retrieve file location for downloading via its file name.
@@ -158,25 +120,17 @@ def perform_download(filename, at_import=False):
 
 
 def perform_del(name):
-    extension = os.path.splitext(name)[-1]
-    file_pre_name = os.path.splitext(name)[0]
-
     path = os.path.join(GlobalConfigContext.FileStore_Directory, name)
-
-    paths = [path]
-    for name in RGExtName:
-        if name.rfind('.') < 0:
-            full_name = file_pre_name + name + extension
-        else:
-            full_name = file_pre_name + name
-        p = os.path.join(GlobalConfigContext.FileStore_Directory, full_name)
-        paths.append(p)
+    paths = [path, get_file_cache_base_dir(name)]
 
     result = True
     for path in paths:
         try:
             if os.path.exists(path):
-                os.remove(path)
+                if os.path.isfile(path):
+                    os.remove(path)
+                elif os.path.isdir(path):
+                    shutil.rmtree(path)
             else:
                 pass
         except Exception as ex:
@@ -218,3 +172,17 @@ def __md5(filename):
     md5code = m.hexdigest()
     # print(md5code)
     return md5code
+
+
+def get_file_cache_base_dir(filename, mk_dir=False):
+    basename = os.path.basename(filename)
+    basename = os.path.splitext(basename)[0]
+    base_dir = os.path.join(GlobalConfigContext.FileCache_Directory, basename)
+    if mk_dir:
+        os.makedirs(base_dir, exist_ok=True)
+    return base_dir
+
+
+def get_file_cache_path(filename, cache_name, mk_dir=False):
+    base_dir = get_file_cache_base_dir(filename, mk_dir)
+    return os.path.join(base_dir, cache_name)

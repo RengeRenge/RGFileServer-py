@@ -108,5 +108,6 @@ venv.bak/
 FileUpDown/stores
 pngquant
 FileUpDown/import
+FileUpDown/cache
 .idea
 .idea/

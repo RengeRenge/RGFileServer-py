@@ -1,28 +1,53 @@
 # encoding: utf-8
+from io import BytesIO
 import os
 from urllib.parse import quote
 
 import cv2
-from PIL import Image
+from PIL import Image, ImageOps, ExifTags
 from flask import Response, abort
+from numpy import ndarray
 from Service import FileInfo
-from Service.FileService import RGVideoThumbName, RGEpubThumbName
+from Service.FileService import RGCompressCacheGifName, RGCompressCacheThumbName, get_file_cache_path
+from Service.gifsicle import Gifsicle
 import zipfile
 
+gifsicle = Gifsicle()
+
 def partial_response(request, path, sub_path, filename):
-    params, mime_guess = {}, None
+    params, mime_guess, side, max_size, quality = {}, None, None, None, None
     if request.is_json:
         params = request.json
+        
         mime_guess = params.get('mime', None)
+        max_size = int(params['size']) if 'size' in params else None
+        side = int(params['side']) if 'side' in params else None
+        sf = int(params['sf']) if 'sf' in params else None
+        quality = params.get('quality', None)
+        
+        if side == 0:
+            side = None
+        if isinstance(sf, int):
+            sf = min(4, sf)
+            sf = max(1, sf)
+        elif sf is None:
+            sf = 1
+        if max_size == 0:
+            max_size = None
+        if quality == 0:
+            quality = None
+        
     if 'cover' in params and int(params['cover']) > 0:
-        return cover_response(path=path)
+        if side is not None:
+            side = side * sf
+        return cover_response(path=path, mime_guess=mime_guess, max_size=max_size, side=side, quality=quality)
     if 'Range' in request.headers:
         return range_stream_response(request=request, path=path, sub_path=sub_path, mime_guess=mime_guess)
     else:
         if sub_path is None or len(sub_path) > 0:
             response = full_stream_inzip_response(path=path, sub_path=sub_path, mime_guess=mime_guess)
         else:
-            response = full_stream_response(path=path, mime_guess=mime_guess)
+            response = stream_response(path=path, mime_guess=mime_guess, side=side, sf=sf, max_size=max_size, quality=quality)
 
     name = params.get('name', filename)
     name = filename if name is None else name
@@ -106,6 +131,25 @@ def range_fd_response(fd, mimetype, size, start, length):
     return response
 
 
+def stream_response(path, mime_guess, side, sf, max_size, quality):
+    mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
+    extension = FileInfo.extension(filename=path, mime=mimetype, mime_guess=mime_guess)
+    if FileInfo.support_image_compress(mime=mimetype, extension=extension):
+        try:
+            is_gif = mimetype.find('gif') >= 0
+            if max_size is not None and is_gif == False:
+                s = side * sf if side is not None else None
+                return __compress_image_quality_response(path, max_size=max_size, side=s, name=path)
+            if side is not None:
+                if mimetype.find('gif') >= 0: # and quality is not None and quality == 'high'
+                    return __compress_gif_response(path, side, mimetype, quality=quality)
+                return __compress_image_side_response(filename=path, side=side * sf, data_path=path, quality=quality)
+        except Exception as ex:
+            print(ex)
+            abort(404)
+    return full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
+
+
 def full_stream_response(path, mime_guess):
     mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
     return full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
@@ -120,6 +164,7 @@ def full_stream_inzip_response(path, sub_path, mime_guess):
             mimetype = FileInfo.mime_type(buffer=fd, mime_guess=mime_guess)
             return full_fd_response(fd=fd, mimetype=mimetype, size=size)
     except Exception as ex:
+        print(ex)
         abort(404)
 
 
@@ -148,69 +193,236 @@ def full_fd_response(mimetype, size, fd=None, path=None):
     return response
 
 
-def cover_response(path):
+def cover_response(path, mime_guess, max_size, side, quality):
     mime = FileInfo.mime_type(path=path)
-    if FileInfo.audio_type(mime=mime):
-        return audio_cover_response(path=path)
-    if FileInfo.video_type(mime=mime):
-        return video_cover_response(path=path)
-    if FileInfo.epub_type(mime=mime):
-        return epub_cover_response(path=path)
+    if FileInfo.audio_type(mime=mime, mime_guess=mime_guess):
+        return audio_cover_response(path=path, max_size=max_size, side=side, quality=quality)
+    if FileInfo.video_type(mime=mime, mime_guess=mime_guess):
+        return video_cover_response(path=path, side=side, quality=quality)
+    if FileInfo.epub_type(mime=mime, mime_guess=mime_guess):
+        return epub_cover_response(path=path, side=side, quality=quality)
     abort(404)
 
 
-def audio_cover_response(path):
-    data = FileInfo.audio_cover(path=path)
-    if data is not None:
-        return Response(data, content_type='image/png')
+def audio_cover_response(path, max_size, side, quality):
+    cache_name='@%s' % (RGCompressCacheThumbName)
+    cache_path = get_file_cache_path(filename=path, cache_name=cache_name, mk_dir=True)
+    if os.path.exists(cache_path):
+        if max_size is not None:
+            return __compress_image_quality_response(cache_path, max_size=max_size, side=side, name=path)
+        if side is not None:
+            return __compress_image_side_response(filename=path, side=side, data_path=cache_path, quality=quality)
+    if __createAudioThumbnail(path, cache_path):
+        return audio_cover_response(path, max_size, side, quality)
     abort(404)
 
 
-def video_cover_response(path):
-    file_pre_name = os.path.splitext(path)[0]
-    thumbnail_path = '%s%s' % (file_pre_name, RGVideoThumbName)
-    if os.path.exists(thumbnail_path):
-        return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
+def video_cover_response(path, side, quality):
+    cache_name='@%s' % (RGCompressCacheThumbName)
+    cache_path = get_file_cache_path(filename=path, cache_name=cache_name, mk_dir=True)
+    if os.path.exists(cache_path):
+        return __compress_image_side_response(filename=path, side=side, data_path=cache_path, quality=quality)
+    if __createVideoCapture(path, cache_path):
+        return __compress_image_side_response(filename=path, side=side, data_path=cache_path, quality=quality)
+    abort(404)
 
+
+def epub_cover_response(path, side, quality):
+    def data_func():
+        return FileInfo.epub_cover(path)
+    return __compress_image_side_response(filename=path, side=side, data_func=data_func, quality=quality)
+
+
+def __createVideoCapture(path, destination):
     cap = cv2.VideoCapture(path)
     try:
         sum_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         dur = sum_frames / fps
-
         frame_number = min(15 if dur < 300 else 600, dur / 2) * fps
         cap.set(1, frame_number - 1)
         res, frame = cap.read()
-
-        if frame is not None and frame.data is not None:
+        if res is True and frame is not None and frame.data is not None:
             frame_im = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            im = Image.fromarray(frame_im)
-            im.thumbnail((1920, 1920), Image.ANTIALIAS)
-            im.save(thumbnail_path, quality=70)
-            return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
-        abort(404)
+            with Image.fromarray(frame_im) as im:
+                im.thumbnail((1920, 1920), Image.ANTIALIAS)
+                im = im.convert('RGB')
+                im.save(destination, format='JPEG', quality=85)
+                return True
     except Exception as ex:
-        print(ex)
-        abort(404)
+        print('__createVideoCapture', ex)
+        return False
     finally:
         if cap is not None:
             cap.release()
 
 
-def epub_cover_response(path):
-    file_pre_name = os.path.splitext(path)[0]
-    thumbnail_path = '%s%s' % (file_pre_name, RGEpubThumbName)
-    if os.path.exists(thumbnail_path):
-        return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
+def __createAudioThumbnail(path, destination):
     try:
-        data = FileInfo.epub_cover(path=path)
-        if data is not None:
-            im = Image.open(data)
+        data = FileInfo.audio_cover(path=path)
+        with Image.open(BytesIO(data)) as im:
             im.thumbnail((1920, 1920), Image.ANTIALIAS)
-            im.save(thumbnail_path, quality=70)
-            return full_stream_response(path=thumbnail_path, mime_guess='image/jpeg')
+            im = im.convert('RGB')
+            im.save(destination, format='JPEG', quality=85)
+            return True
+    except Exception as ex:
+        print('__createAudioThumbnail', ex)
+        return False
+
+
+def __compress_image_side_response(filename, side, data_func=None, data=None, data_path=None, quality=85):
+    try:
+        if side is None or side == 0:
+            if data_path is not None:
+                return full_stream_response(data_path, None)
+            if data is None:
+                data = data_func()
+            if data is not None:
+                cache_name='@%s' % (RGCompressCacheThumbName)
+                cache_path = get_file_cache_path(filename=filename, cache_name=cache_name, mk_dir=True)
+                if os.path.exists(cache_path):
+                    return full_stream_response(path=cache_path, mime_guess='image/jpeg')
+                with open(cache_path, 'wb') as f:
+                    f.write(data)
+                    return full_stream_response(cache_path, 'image/jpeg')
+            abort(404)
+
+        if quality is not None:
+            if isinstance(quality, str):
+                if quality == 'high':
+                    quality = 85
+                elif quality == 'low':
+                    quality = 40
+                else:
+                    quality = 85
+            elif isinstance(quality, int):
+                quality = min(int(quality), 85)
+        else:
+            quality = 85
+        
+        if data_path is not None:
+            with Image.open(data_path) as im:
+                return __process_image_response(im, side, quality, filename)
+        if data is None and data_func is not None:
+            data = data_func()
+        if data is not None:
+            if isinstance(data, ndarray):
+                with Image.fromarray(data) as im:
+                    return __process_image_response(im, side, quality, filename)
+            else:
+                with Image.open(data) as im:
+                    return __process_image_response(im, side, quality, filename)
         abort(404)
     except Exception as ex:
         print(ex)
         abort(404)
+
+
+def __process_image_response(im, side, quality, filename):
+    if side > im.height and side > im.width:
+        side = int(max(im.height, im.width))
+
+    cache_name='@%dx%d@quality_%d%s' % (side, side, quality, RGCompressCacheThumbName)
+    cache_path = get_file_cache_path(filename=filename, cache_name=cache_name, mk_dir=True)
+    if os.path.exists(cache_path):
+        return full_stream_response(path=cache_path, mime_guess='image/jpeg')
+
+    im.thumbnail((side, side), Image.ANTIALIAS)
+    im = __rotate_image_if_need(image=im, exif=im.getexif())
+    im.save(cache_path, format=im.format, quality=quality)
+    return full_stream_response(path=cache_path, mime_guess='image/jpeg')
         
+        
+def __compress_gif_response(path, side, mimetype, quality):
+    color = 128
+    lossy = 20
+    optimize = 3
+    if quality is not None and isinstance(quality, str):
+        if quality == 'low':
+            color = 64
+            lossy = 80
+            optimize = 4
+
+    with Image.open(path) as im:
+        if side > im.height and side > im.width:
+            side = int(max(im.height, im.width))
+
+    cache_name='@%dx%d@color_%d@lossy_%d@optimize_%d%s' % (side, side, color, lossy, optimize, RGCompressCacheGifName)
+    cache_path = get_file_cache_path(filename=path, cache_name=cache_name, mk_dir=True)
+    if os.path.exists(cache_path):
+        return full_stream_response(path=cache_path, mime_guess='image/gif')
+    if gifsicle.compress(path, cache_path, width=side, height=side, colors=color, lossy=lossy, optimize=optimize) == False:
+         raise Exception
+    else:
+        return full_stream_response(cache_path, mimetype)
+
+
+def __compress_image_quality_response(path, max_size, side, name):
+    path = __compress_image_quality(path, max_size=max_size, side=side, name=name)
+    return full_stream_response(path, mime_guess=None)
+
+
+def __compress_image_quality(image_path, max_size, side, name):
+    """
+    Compress images to a specified size
+    :param image_data: image data
+    :param max_size: specified size
+    :param name: given '/store/photo_2024.jpg', save to '/cache/photo_2024/@102400_compressCacheThumbnail.jpeg'
+    :return: new image data
+    """
+    
+
+    with Image.open(image_path) as im:
+        if max_size is None or max_size == 0:
+            return image_path
+
+        max_kb = max_size * 1024
+        
+        with BytesIO() as output:
+            im.save(output, format=im.format)
+            size = output.tell()
+            
+            if size <= max_kb:
+                return image_path
+
+        if side is None:
+            side = int(max(im.height, im.width))
+        else:
+            if side > im.height and side > im.width:
+                side = int(max(im.height, im.width))
+
+        cache_path = get_file_cache_path(filename=name, mk_dir=True, cache_name='@%dx%d@size_%d%s' % (side, side, max_kb, RGCompressCacheThumbName))
+        
+        if os.path.exists(cache_path):
+            return cache_path
+
+        with BytesIO() as img_byte_arr:
+            low, high = 1, 100
+            count = 0
+            
+            im.thumbnail((side, side), Image.ANTIALIAS)
+            while low < high - 1:
+                mid = (low + high) // 2
+                im.save(img_byte_arr, format=im.format, quality=mid)
+                count += 1
+                size = img_byte_arr.tell()
+                if size > max_kb:
+                    high = mid - 1
+                else:
+                    low = mid
+                img_byte_arr.seek(0)
+                img_byte_arr.truncate(0)
+
+            print('__compress_image count', count + 1, 'max_size', max_kb, 'size', size)
+            im.save(cache_path, format=im.format, quality=low)
+            return cache_path
+
+
+def __rotate_image_if_need(image, exif):
+    if exif:
+        for key in ExifTags.TAGS.keys():
+            if ExifTags.TAGS[key]=='Orientation':
+                if key in exif:
+                    image = ImageOps.exif_transpose(image)
+                break
+    return image
