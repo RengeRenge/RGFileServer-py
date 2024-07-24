@@ -150,7 +150,7 @@ def stream_response(path, mime_guess, side, sf, max_size, quality):
     return full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
 
 
-def full_stream_response(path, mime_guess):
+def full_stream_response(path, mime_guess=None):
     mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
     return full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
 
@@ -212,6 +212,7 @@ def audio_cover_response(path, max_size, side, quality):
             return __compress_image_quality_response(cache_path, max_size=max_size, side=side, name=path)
         if side is not None:
             return __compress_image_side_response(filename=path, side=side, data_path=cache_path, quality=quality)
+        return full_stream_response(cache_path)
     if __createAudioThumbnail(path, cache_path):
         return audio_cover_response(path, max_size, side, quality)
     abort(404)
@@ -276,17 +277,17 @@ def __compress_image_side_response(filename, side, data_func=None, data=None, da
     try:
         if side is None or side == 0:
             if data_path is not None:
-                return full_stream_response(data_path, None)
+                return full_stream_response(data_path)
             if data is None:
                 data = data_func()
             if data is not None:
                 cache_name='@%s' % (RGCompressCacheThumbName)
                 cache_path = get_file_cache_path(filename=filename, cache_name=cache_name, mk_dir=True)
                 if os.path.exists(cache_path):
-                    return full_stream_response(path=cache_path, mime_guess='image/jpeg')
+                    return full_stream_response(cache_path)
                 with open(cache_path, 'wb') as f:
                     f.write(data)
-                    return full_stream_response(cache_path, 'image/jpeg')
+                    return full_stream_response(cache_path)
             abort(404)
 
         if quality is not None:
@@ -327,12 +328,12 @@ def __process_image_response(im, side, quality, filename):
     cache_name='@%dx%d@quality_%d%s' % (side, side, quality, RGCompressCacheThumbName)
     cache_path = get_file_cache_path(filename=filename, cache_name=cache_name, mk_dir=True)
     if os.path.exists(cache_path):
-        return full_stream_response(path=cache_path, mime_guess='image/jpeg')
+        return full_stream_response(cache_path)
 
     im.thumbnail((side, side), Image.ANTIALIAS)
     im = __rotate_image_if_need(image=im, exif=im.getexif())
     im.save(cache_path, format=im.format, quality=quality)
-    return full_stream_response(path=cache_path, mime_guess='image/jpeg')
+    return full_stream_response(cache_path)
         
         
 def __compress_gif_response(path, side, mimetype, quality):
@@ -361,7 +362,7 @@ def __compress_gif_response(path, side, mimetype, quality):
 
 def __compress_image_quality_response(path, max_size, side, name):
     path = __compress_image_quality(path, max_size=max_size, side=side, name=name)
-    return full_stream_response(path, mime_guess=None)
+    return full_stream_response(path)
 
 
 def __compress_image_quality(image_path, max_size, side, name):
