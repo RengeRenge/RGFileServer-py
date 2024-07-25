@@ -330,9 +330,10 @@ def __process_image_response(im, side, quality, filename):
     if os.path.exists(cache_path):
         return full_stream_response(cache_path)
 
+    format = im.format
     im.thumbnail((side, side), Image.ANTIALIAS)
     im = __rotate_image_if_need(image=im, exif=im.getexif())
-    im.save(cache_path, format=im.format, quality=quality)
+    im.save(cache_path, format=format, quality=quality)
     return full_stream_response(cache_path)
         
         
@@ -380,9 +381,10 @@ def __compress_image_quality(image_path, max_size, side, name):
             return image_path
 
         max_kb = max_size * 1024
+        format = im.format
         
         with BytesIO() as output:
-            im.save(output, format=im.format)
+            im.save(output, format=format)
             size = output.tell()
             
             if size <= max_kb:
@@ -406,7 +408,7 @@ def __compress_image_quality(image_path, max_size, side, name):
             im.thumbnail((side, side), Image.ANTIALIAS)
             while low < high - 1:
                 mid = (low + high) // 2
-                im.save(img_byte_arr, format=im.format, quality=mid)
+                im.save(img_byte_arr, format=format, quality=mid)
                 count += 1
                 size = img_byte_arr.tell()
                 if size > max_kb:
@@ -417,7 +419,7 @@ def __compress_image_quality(image_path, max_size, side, name):
                 img_byte_arr.truncate(0)
 
             print('__compress_image count', count + 1, 'max_size', max_kb, 'size', size)
-            im.save(cache_path, format=im.format, quality=low)
+            im.save(cache_path, format=format, quality=low)
             return cache_path
 
 
