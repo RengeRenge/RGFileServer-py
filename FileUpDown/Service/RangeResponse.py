@@ -174,14 +174,14 @@ def full_fd_response(mimetype, size, fd=None, path=None):
         if path is not None:
             with open(path, 'rb') as f:
                 while True:
-                    buf = f.read(10 * 1024 * 1024)
+                    buf = f.read(256 * 1024)
                     if not buf:
                         break
                     yield buf
 
         elif fd is not None:
             while True:
-                buf = fd.read(10 * 1024 * 1024)
+                buf = fd.read(256 * 1024)
                 if not buf:
                     break
                 yield buf
