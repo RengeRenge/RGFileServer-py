@@ -246,7 +246,3 @@ def audio_cover(path):
         # 这通常是m4a文件
         return tags['covr'][0]
     return None
-
-
-def epub_cover(path):
-    return epub.get_epub_cover(path)

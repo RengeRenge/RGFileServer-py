@@ -64,7 +64,21 @@ def get_epub_cover(epub_path):
         # We return the image
         return z.open(cover_path)
 
-# data = get_epub_cover('./安达与岛村8.epub')
-# im = Image.open(data)
+# fd = get_epub_cover('./安达与岛村8.epub')
+# im = Image.open(fd)
 # im.thumbnail((600, 600), Image.ANTIALIAS)
 # im.save('./test.jpg', quality=70)
+# fd.close()
+
+class open_cover:
+    def __init__(self, epub_path):
+        self.epub_path = epub_path
+        self.file = None
+
+    def __enter__(self):
+        self.file = get_epub_cover(self.epub_path)
+        return self.file
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.file:
+            self.file.close()

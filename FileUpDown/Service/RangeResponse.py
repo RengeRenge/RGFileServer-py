@@ -7,6 +7,7 @@ import cv2
 from PIL import Image, ImageOps, ExifTags
 from flask import Response, abort
 from numpy import ndarray
+from Service import epub
 from Service import FileInfo
 from Service.FileService import RGCompressCacheGifName, RGCompressCacheThumbName, get_file_cache_path
 from Service.gifsicle import Gifsicle
@@ -229,9 +230,8 @@ def video_cover_response(path, side, quality):
 
 
 def epub_cover_response(path, side, quality):
-    def data_func():
-        return FileInfo.epub_cover(path)
-    return __compress_image_side_response(filename=path, side=side, data_func=data_func, quality=quality)
+    with epub.open_cover(path) as fd:
+        return __compress_image_side_response(filename=path, side=side, fd=fd, quality=quality)
 
 
 def __createVideoCapture(path, destination):
@@ -273,18 +273,21 @@ def __createAudioThumbnail(path, destination):
         return False
 
 
-def __compress_image_side_response(filename, side, data_func=None, data=None, data_path=None, quality=85):
+def __compress_image_side_response(filename, side, fd=None, data=None, data_path=None, quality=85):
     try:
         if side is None or side == 0:
             if data_path is not None:
                 return full_stream_response(data_path)
-            if data is None:
-                data = data_func()
-            if data is not None:
-                cache_name='@%s' % (RGCompressCacheThumbName)
-                cache_path = get_file_cache_path(filename=filename, cache_name=cache_name, mk_dir=True)
-                if os.path.exists(cache_path):
+            
+            cache_name='@%s' % (RGCompressCacheThumbName)
+            cache_path = get_file_cache_path(filename=filename, cache_name=cache_name, mk_dir=True)
+            if os.path.exists(cache_path):
+                return full_stream_response(cache_path)
+            if fd is not None:
+                with Image.open(fd) as im:
+                    im.save(cache_path, format=im.format)
                     return full_stream_response(cache_path)
+            if data is not None:
                 with open(cache_path, 'wb') as f:
                     f.write(data)
                     return full_stream_response(cache_path)
@@ -306,8 +309,9 @@ def __compress_image_side_response(filename, side, data_func=None, data=None, da
         if data_path is not None:
             with Image.open(data_path) as im:
                 return __process_image_response(im, side, quality, filename)
-        if data is None and data_func is not None:
-            data = data_func()
+        if fd is not None:
+            with Image.open(fd) as im:
+                return __process_image_response(im, side, quality, filename)
         if data is not None:
             if isinstance(data, ndarray):
                 with Image.fromarray(data) as im:
@@ -317,7 +321,7 @@ def __compress_image_side_response(filename, side, data_func=None, data=None, da
                     return __process_image_response(im, side, quality, filename)
         abort(404)
     except Exception as ex:
-        print(ex)
+        print('__compress_image_side_response error:\n', 'info:', ex, filename, '\n', fd, '\n', side, data != None, data_path, quality)
         abort(404)
 
 
@@ -356,7 +360,8 @@ def __compress_gif_response(path, side, mimetype, quality):
     if os.path.exists(cache_path):
         return full_stream_response(path=cache_path, mime_guess='image/gif')
     if gifsicle.compress(path, cache_path, width=side, height=side, colors=color, lossy=lossy, optimize=optimize) == False:
-         raise Exception
+        print('__compress_gif_response failed')
+        abort(404)
     else:
         return full_stream_response(cache_path, mimetype)
 
