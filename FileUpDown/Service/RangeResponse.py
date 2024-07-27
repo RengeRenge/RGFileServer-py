@@ -246,7 +246,7 @@ def __createVideoCapture(path, destination):
         if res is True and frame is not None and frame.data is not None:
             frame_im = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             with Image.fromarray(frame_im) as im:
-                im.thumbnail((1920, 1920), Image.ANTIALIAS)
+                im.thumbnail((1920, 1920), Image.Resampling.LANCZOS)
                 im = im.convert('RGB')
                 im.save(destination, format='JPEG', quality=85)
                 return True
@@ -264,7 +264,7 @@ def __createAudioThumbnail(path, destination):
         if data is None:
             return False
         with Image.open(BytesIO(data)) as im:
-            im.thumbnail((1920, 1920), Image.ANTIALIAS)
+            im.thumbnail((1920, 1920), Image.Resampling.LANCZOS)
             im = im.convert('RGB')
             im.save(destination, format='JPEG', quality=85)
             return True
@@ -335,7 +335,7 @@ def __process_image_response(im, side, quality, filename):
         return full_stream_response(cache_path)
 
     format = im.format
-    im.thumbnail((side, side), Image.ANTIALIAS)
+    im.thumbnail((side, side), Image.Resampling.LANCZOS)
     im = __rotate_image_if_need(image=im, exif=im.getexif())
     im.save(cache_path, format=format, quality=quality)
     return full_stream_response(cache_path)
@@ -410,7 +410,7 @@ def __compress_image_quality(image_path, max_size, side, name):
             low, high = 1, 100
             count = 0
             
-            im.thumbnail((side, side), Image.ANTIALIAS)
+            im.thumbnail((side, side), Image.Resampling.LANCZOS)
             while low < high - 1:
                 mid = (low + high) // 2
                 im.save(img_byte_arr, format=format, quality=mid)

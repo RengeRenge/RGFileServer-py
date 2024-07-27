@@ -3,7 +3,6 @@ import difflib
 import mimetypes
 import time
 import os
-from Service import epub
 
 import magic
 import exifread
