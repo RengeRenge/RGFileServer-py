@@ -7,7 +7,8 @@ from Service import epub
 
 import magic
 import exifread
-from exifread import IfdTag, Ratio
+from exifread.utils import Ratio
+from exifread.classes import IfdTag
 from mutagen import File
 
 
