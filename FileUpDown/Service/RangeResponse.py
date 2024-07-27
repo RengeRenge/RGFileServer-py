@@ -1,4 +1,5 @@
 # encoding: utf-8
+from datetime import datetime
 from io import BytesIO
 import os
 from urllib.parse import quote
@@ -37,98 +38,37 @@ def partial_response(request, path, sub_path, filename):
             max_size = None
         if quality == 0:
             quality = None
-        
+
+    name = params.get('name')
+    if name is not None and len(name) == 0:
+        name = None
+
     if 'cover' in params and int(params['cover']) > 0:
         if side is not None:
             side = side * sf
-        return cover_response(path=path, mime_guess=mime_guess, max_size=max_size, side=side, quality=quality)
-    if 'Range' in request.headers:
-        return range_stream_response(request=request, path=path, sub_path=sub_path, mime_guess=mime_guess)
+        response = cover_response(path=path, mime_guess=mime_guess, max_size=max_size, side=side, quality=quality)
+        name = os.path.splitext(name if name is not None else filename)[0]
+        ext = response.mimetype.split('/')[-1]
+        name = f'{name}.{ext}'
+    elif 'Range' in request.headers:
+        response = __range_stream_response(request=request, path=path, sub_path=sub_path, mime_guess=mime_guess)
+        if sub_path is not None and len(sub_path) > 0:
+            name = os.path.basename(sub_path)
     else:
-        if sub_path is None or len(sub_path) > 0:
-            response = full_stream_inzip_response(path=path, sub_path=sub_path, mime_guess=mime_guess)
-        else:
+        if sub_path is None or len(sub_path) <= 0:
             response = stream_response(path=path, mime_guess=mime_guess, side=side, sf=sf, max_size=max_size, quality=quality)
+        else:
+            response = __full_stream_inzip_response(path=path, sub_path=sub_path, mime_guess=mime_guess)
+            name = os.path.basename(sub_path)
 
-    name = params.get('name', filename)
-    name = filename if name is None else name
-    dis = "inline; filename*=utf-8''{}".format(quote(name.encode('utf8')))
-    response.headers['Content-Disposition'] = dis
+    disposition = filename if name is None else name
+    disposition = "inline; filename*=utf-8''{}".format(quote(disposition.encode('utf8')))
+    response.headers['Content-Disposition'] = disposition
+    
+    response.last_modified = datetime.fromtimestamp(os.path.getmtime(path))
 
     # Accept request with Range header
     response.headers['Accept-Ranges'] = 'bytes'
-    return response
-
-
-def get_ranges(request, file_size):
-    buffer_range = request.headers.get('Range')
-    group = buffer_range.split('bytes=')[-1]
-    ranges = group.split(',')
-    buffer_ranges = []
-    # print('group ---------->')
-    for range in ranges:
-        start, length = get_range(range=range, file_size=file_size)
-        buffer_ranges.append({
-            'start': start,
-            'length': length
-        })
-        # print(start, '-', start + length - 1)
-    # print('group <----------')
-    return buffer_ranges
-
-
-def get_range(range, file_size):
-    index = range.find('-')
-    items = range.split('-')
-    if index == 0:
-        # bytes=-500
-        length = int(items[-1])
-        start = file_size - length
-    elif index == len(range) - 1:
-        # bytes=500-
-        start = int(items[0])
-        length = file_size - start
-    else:
-        # bytes=500-999
-        start = int(items[0])
-        length = int(items[-1]) - start + 1
-    return start, length
-
-
-def range_stream_response(request, path, sub_path, mime_guess):
-    file_size = os.path.getsize(path)
-    buffer_ranges = get_ranges(request, file_size)
-
-    buffer_range = buffer_ranges[0]
-    start = buffer_range['start']
-    length = buffer_range['length']
-
-    if sub_path is None or len(sub_path) <= 0:
-        file_size = os.path.getsize(path)
-        mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
-        with open(path, 'rb') as fd:
-            return range_fd_response(fd=fd, mimetype=mimetype, size=file_size, start=start, length=length)
-    
-    try:
-        with zipfile.ZipFile(path) as z:
-            fd = z.open(sub_path)
-            size = z.getinfo(sub_path).file_size
-            mimetype = FileInfo.mime_type(buffer=fd, mime_guess=mime_guess)
-            return range_fd_response(fd=fd, mimetype=mimetype, size=size, start=start, length=length)
-    except:
-        abort(404)
-
-
-def range_fd_response(fd, mimetype, size, start, length):
-    fd.seek(start)
-    read_bytes = fd.read(length)
-    response = Response(
-        read_bytes,
-        206,  # Partial Content
-        mimetype=mimetype,
-        direct_passthrough=True,  # Identity encoding
-        )
-    response.headers['Content-Range'] = 'bytes {0}-{1}/{2}'.format(start, start + length - 1, size)
     return response
 
 
@@ -148,50 +88,7 @@ def stream_response(path, mime_guess, side, sf, max_size, quality):
         except Exception as ex:
             print(ex)
             abort(404)
-    return full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
-
-
-def full_stream_response(path, mime_guess=None):
-    mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
-    return full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
-
-
-def full_stream_inzip_response(path, sub_path, mime_guess):
-    try:
-        with zipfile.ZipFile(path) as z:
-            sub_path = sub_path.encode('gbk').decode('cp437')
-            fd = z.open(sub_path)
-            size = z.getinfo(sub_path).file_size
-            mimetype = FileInfo.mime_type(buffer=fd, mime_guess=mime_guess)
-            return full_fd_response(fd=fd, mimetype=mimetype, size=size)
-    except Exception as ex:
-        print(ex)
-        abort(404)
-
-
-def full_fd_response(mimetype, size, fd=None, path=None):
-    def send_streaming():
-        if path is not None:
-            with open(path, 'rb') as f:
-                while True:
-                    buf = f.read(256 * 1024)
-                    if not buf:
-                        break
-                    yield buf
-
-        elif fd is not None:
-            while True:
-                buf = fd.read(256 * 1024)
-                if not buf:
-                    break
-                yield buf
-    
-    if mimetype is not None:
-        if mimetype.startswith('text') or mimetype.endswith('json') or mimetype.endswith('rtf'):
-            mimetype+=';charset=UTF-8'
-    response = Response(send_streaming(), content_type=mimetype)
-    response.headers['Content-Length'] = size
-    return response
+    return __full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
 
 
 def cover_response(path, mime_guess, max_size, side, quality):
@@ -213,7 +110,7 @@ def audio_cover_response(path, max_size, side, quality):
             return __compress_image_quality_response(cache_path, max_size=max_size, side=side, name=path)
         if side is not None:
             return __compress_image_side_response(filename=path, side=side, data_path=cache_path, quality=quality)
-        return full_stream_response(cache_path)
+        return __full_stream_response(cache_path)
     if __createAudioThumbnail(path, cache_path):
         return audio_cover_response(path, max_size, side, quality)
     abort(404)
@@ -277,20 +174,20 @@ def __compress_image_side_response(filename, side, fd=None, data=None, data_path
     try:
         if side is None or side == 0:
             if data_path is not None:
-                return full_stream_response(data_path)
+                return __full_stream_response(data_path)
             
             cache_name='@%s' % (RGCompressCacheThumbName)
             cache_path = get_file_cache_path(filename=filename, cache_name=cache_name, mk_dir=True)
             if os.path.exists(cache_path):
-                return full_stream_response(cache_path)
+                return __full_stream_response(cache_path)
             if fd is not None:
                 with Image.open(fd) as im:
                     im.save(cache_path, format=im.format)
-                    return full_stream_response(cache_path)
+                    return __full_stream_response(cache_path)
             if data is not None:
                 with open(cache_path, 'wb') as f:
                     f.write(data)
-                    return full_stream_response(cache_path)
+                    return __full_stream_response(cache_path)
             abort(404)
 
         if quality is not None:
@@ -332,13 +229,13 @@ def __process_image_response(im, side, quality, filename):
     cache_name='@%dx%d@quality_%d%s' % (side, side, quality, RGCompressCacheThumbName)
     cache_path = get_file_cache_path(filename=filename, cache_name=cache_name, mk_dir=True)
     if os.path.exists(cache_path):
-        return full_stream_response(cache_path)
+        return __full_stream_response(cache_path)
 
     format = im.format
     im.thumbnail((side, side), Image.Resampling.LANCZOS)
     im = __rotate_image_if_need(image=im, exif=im.getexif())
     im.save(cache_path, format=format, quality=quality)
-    return full_stream_response(cache_path)
+    return __full_stream_response(cache_path)
         
         
 def __compress_gif_response(path, side, mimetype, quality):
@@ -358,17 +255,17 @@ def __compress_gif_response(path, side, mimetype, quality):
     cache_name='@%dx%d@color_%d@lossy_%d@optimize_%d%s' % (side, side, color, lossy, optimize, RGCompressCacheGifName)
     cache_path = get_file_cache_path(filename=path, cache_name=cache_name, mk_dir=True)
     if os.path.exists(cache_path):
-        return full_stream_response(path=cache_path, mime_guess='image/gif')
+        return __full_stream_response(path=cache_path, mime_guess='image/gif')
     if gifsicle.compress(path, cache_path, width=side, height=side, colors=color, lossy=lossy, optimize=optimize) == False:
         print('__compress_gif_response failed')
         abort(404)
     else:
-        return full_stream_response(cache_path, mimetype)
+        return __full_stream_response(cache_path, mimetype)
 
 
 def __compress_image_quality_response(path, max_size, side, name):
     path = __compress_image_quality(path, max_size=max_size, side=side, name=name)
-    return full_stream_response(path)
+    return __full_stream_response(path)
 
 
 def __compress_image_quality(image_path, max_size, side, name):
@@ -436,3 +333,119 @@ def __rotate_image_if_need(image, exif):
                     image = ImageOps.exif_transpose(image)
                 break
     return image
+
+
+def __get_ranges(request, file_size):
+    buffer_range = request.headers.get('Range')
+    group = buffer_range.split('bytes=')[-1]
+    ranges = group.split(',')
+    buffer_ranges = []
+    # print('group ---------->')
+    for range in ranges:
+        start, length = __get_range(range=range, file_size=file_size)
+        buffer_ranges.append({
+            'start': start,
+            'length': length
+        })
+        # print(start, '-', start + length - 1)
+    # print('group <----------')
+    return buffer_ranges
+
+
+def __get_range(range, file_size):
+    index = range.find('-')
+    items = range.split('-')
+    if index == 0:
+        # bytes=-500
+        length = int(items[-1])
+        start = file_size - length
+    elif index == len(range) - 1:
+        # bytes=500-
+        start = int(items[0])
+        length = file_size - start
+    else:
+        # bytes=500-999
+        start = int(items[0])
+        length = int(items[-1]) - start + 1
+    return start, length
+
+
+def __range_stream_response(request, path, sub_path, mime_guess):
+    file_size = os.path.getsize(path)
+    buffer_ranges = __get_ranges(request, file_size)
+
+    buffer_range = buffer_ranges[0]
+    start = buffer_range['start']
+    length = buffer_range['length']
+
+    if sub_path is None or len(sub_path) <= 0:
+        file_size = os.path.getsize(path)
+        mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
+        with open(path, 'rb') as fd:
+            return __range_fd_response(fd=fd, mimetype=mimetype, size=file_size, start=start, length=length)
+    
+    try:
+        with zipfile.ZipFile(path) as z:
+            fd = z.open(sub_path)
+            size = z.getinfo(sub_path).file_size
+            mimetype = FileInfo.mime_type(buffer=fd, mime_guess=mime_guess)
+            return __range_fd_response(fd=fd, mimetype=mimetype, size=size, start=start, length=length)
+    except:
+        abort(404)
+
+
+def __range_fd_response(fd, mimetype, size, start, length):
+    fd.seek(start)
+    read_bytes = fd.read(length)
+    response = Response(
+        read_bytes,
+        206,  # Partial Content
+        mimetype=mimetype,
+        direct_passthrough=True,  # Identity encoding
+        )
+    response.headers['Content-Range'] = 'bytes {0}-{1}/{2}'.format(start, start + length - 1, size)
+    return response
+
+
+def __full_stream_response(path, mime_guess=None):
+    mimetype = FileInfo.mime_type(path=path, mime_guess=mime_guess)
+    return __full_fd_response(path=path, mimetype=mimetype, size=os.path.getsize(path))
+
+
+def __full_stream_inzip_response(path, sub_path, mime_guess):
+    try:
+        with zipfile.ZipFile(path) as z:
+            sub_path = sub_path.encode('gbk').decode('cp437')
+            fd = z.open(sub_path)
+            size = z.getinfo(sub_path).file_size
+            mimetype = FileInfo.mime_type(buffer=fd, mime_guess=mime_guess)
+            return __full_fd_response(fd=fd, mimetype=mimetype, size=size)
+    except Exception as ex:
+        print(ex)
+        abort(404)
+
+
+def __full_fd_response(mimetype, size, fd=None, path=None):
+    def send_streaming():
+        if path is not None:
+            with open(path, 'rb') as f:
+                while True:
+                    buf = f.read(256 * 1024)
+                    if not buf:
+                        break
+                    yield buf
+
+        elif fd is not None:
+            while True:
+                buf = fd.read(256 * 1024)
+                if not buf:
+                    break
+                yield buf
+    
+    if mimetype is not None:
+        if mimetype.startswith('text') or mimetype.endswith('json') or mimetype.endswith('rtf'):
+            mimetype+=';charset=UTF-8'
+    
+    response = Response(send_streaming(), content_type=mimetype)
+    response.headers['Content-Length'] = size
+    return response
