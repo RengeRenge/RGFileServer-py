@@ -9,12 +9,12 @@ import shutil
 import magic
 import uuid
 import GlobalConfigContext
-# import pngquant
-from PIL import Image
+import logging as L
+logging = L.getLogger('file')
 
 from Service import FileInfo
-from Service.gifsicle import GifInfo, Gifsicle
 import hashlib
+from flask import request
 
 RGThumbnailName = '_thumbnail'
 RGQualityName = '_quality'
@@ -61,7 +61,7 @@ def perform_upload(data):
         file_size = os.path.getsize(upload_path)
         return True, "", filename, mime, exif, file_size, __md5(upload_path)
     except Exception as ex:
-        print(ex)
+        logging.err(ex)
         return False, str(ex), filename, None, 0, 0, ""
     finally:
         if f is not None:
@@ -95,7 +95,7 @@ def __rotate_image_if_need(image, exif):
                 rotated = True
                 image = image.rotate(90, expand=True)
     except Exception as ex:
-        print(ex)
+        logging.error(ex, exc_info=True)
         pass
     return image, rotated
 
@@ -134,8 +134,7 @@ def perform_del(name):
             else:
                 pass
         except Exception as ex:
-            print("perform_del")
-            print(ex)
+            logging.error(ex, exc_info=True)
             result = False
     return result
 
@@ -158,7 +157,7 @@ def perform_info(name):
         else:
             pass
     except Exception as ex:
-        print(ex)
+        logging.error(ex, exc_info=True)
         msg = str(ex)
     finally:
         return result, msg, name, mime, exif, file_size, md5
@@ -170,7 +169,6 @@ def __md5(filename):
         for line in f:
             m.update(line)
     md5code = m.hexdigest()
-    # print(md5code)
     return md5code
 
 
@@ -186,3 +184,33 @@ def get_file_cache_base_dir(filename, mk_dir=False):
 def get_file_cache_path(filename, cache_name, mk_dir=False):
     base_dir = get_file_cache_base_dir(filename, mk_dir)
     return os.path.join(base_dir, cache_name)
+
+
+def get_request_params():
+    if request.is_json:
+        json_data = request.get_json(silent=True)
+        return json_data
+    if request.args:
+        return request.args
+    if request.form:
+        return request.form
+    if request.files:
+        return request.files
+    return {}
+
+
+def get_request_param(param_name, default=None, is_number=False):
+    value = default
+    if request.is_json:
+        json_data = request.get_json(silent=True)
+        if json_data and param_name in json_data:
+            value = json_data.get(param_name, default)
+    if param_name in request.args:
+        value = request.args.get(param_name, default)
+    if param_name in request.form:
+        value = request.form.get(param_name, default)
+    if param_name in request.files:
+        value = request.files.get(param_name, default)
+    if is_number and isinstance(value, str):
+        value = float(value)
+    return value

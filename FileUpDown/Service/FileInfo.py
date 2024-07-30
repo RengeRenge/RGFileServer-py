@@ -9,7 +9,8 @@ import exifread
 from exifread.utils import Ratio
 from exifread.classes import IfdTag
 from mutagen import File
-
+import logging as L
+logging = L.getLogger('file')
 
 image_support = [
     'bmp',
@@ -199,7 +200,7 @@ def exif_data(filename):
                     exif.update(gps_lalo='%f,%f' % (lat, lon))
                 return exif
             except Exception as ex:
-                print(ex)
+                logging.error(ex, exc_info=True)
                 return exif
             finally:
                 fd.close()

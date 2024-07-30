@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, abort, request, jsonify
 
 import Gateway
 from Service import FileService, RangeResponse
@@ -86,7 +86,8 @@ def handle_download_file_post():
     required_parameter = ["filename"]
     missing_list = Gateway.check_required_parameter(required_parameter, request.values)
     if len(missing_list) != 0:
-        return "Missing required argument list: " + str(missing_list)
+        abort(404)
+        # return "Missing required argument list: " + str(missing_list)
     filename = request.values["filename"]
     # handle download procedure
     flag, location, sub_path = FileService.perform_download(filename)
@@ -98,7 +99,8 @@ def __actual_handle_download(filename, flag, location, sub_path):
     Retrieve file from steady by controller and generate streaming response package.
     """
     if flag is False:
-        return "File not exist: " + filename
+        abort(404)
+        # return "File not exist: " + filename
     else:
         return RangeResponse.partial_response(request=request, path=location, sub_path=sub_path, filename=filename)
 
